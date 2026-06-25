@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
-import { BarChart3, BookOpen, Brain, CalendarDays, Check, ChevronRight, Clock3, Flame, RotateCcw, Save } from 'lucide-react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { BarChart3, BookOpen, Brain, CalendarDays, Check, ChevronRight, Clock3, Flame, LogIn, LogOut, RotateCcw, Save, UserRound } from 'lucide-react'
 import rawCards from './data/vocabulary.json'
 import { StudyCard } from './components/StudyCard'
 import { useStudySession } from './hooks/useStudySession'
 import { nextLabel } from './lib/scheduler'
+import { getAuthSession, login, logout as logoutApi, type AuthSession } from './lib/api'
 import type { Rating, VocabularyCard } from './types'
 import './styles.css'
 
@@ -15,13 +16,50 @@ const ratings: { id: Rating; label: string; key: string }[] = [
   { id: 'easy', label: '简单', key: '4' },
 ]
 
-export default function App() {
+function LoginPage({ onLogin }: { onLogin: (session: AuthSession) => void }) {
+  const [username, setUsername] = useState('david')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setError('')
+    setSubmitting(true)
+    try {
+      onLogin(await login(username.trim(), password))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '登录失败')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="login-shell">
+      <form className="login-card" onSubmit={submit}>
+        <div className="login-logo"><span>単</span></div>
+        <p className="login-kicker">Tango Anki</p>
+        <h1>登录后继续背词</h1>
+        <p className="login-copy">学习进度会保存到本地 Docker 数据库，换浏览器也能接着来。</p>
+        <label>用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" /></label>
+        <label>密码<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" autoFocus /></label>
+        {error && <p className="login-error">{error}</p>}
+        <button type="submit" disabled={submitting}><LogIn size={18} /> {submitting ? '登录中...' : '登录'}</button>
+      </form>
+    </div>
+  )
+}
+
+function StudyApp({ session, onLogout }: { session: AuthSession; onLogout: () => void }) {
   const [flipped, setFlipped] = useState(false)
   const {
     current, record, rate, stats,
     daily, settings, todayTotal, updateLimits,
   } = useStudySession(cards)
   const [draftNew, setDraftNew] = useState(settings.newPerDay)
+
+  useEffect(() => setDraftNew(settings.newPerDay), [settings.newPerDay])
 
   const answer = (rating: Rating) => {
     if (!flipped) return
@@ -47,7 +85,11 @@ export default function App() {
       <header className="topbar">
         <a className="brand" href="/" aria-label="Tango Anki 首页"><span>単</span> Tango Anki</a>
         <nav><a className="active" href="#study"><BookOpen size={18} /> 学习</a><a href="#stats"><BarChart3 size={18} /> 数据</a></nav>
-        <div className="streak"><Flame size={18} /> 今日 {todayTotal}</div>
+        <div className="topbar-actions">
+          <div className="user-pill"><UserRound size={16} /> {session.username}</div>
+          <div className="streak"><Flame size={18} /> 今日 {todayTotal}</div>
+          <button className="logout-button" onClick={onLogout}><LogOut size={16} /> 退出</button>
+        </div>
       </header>
 
       <main>
@@ -90,4 +132,27 @@ export default function App() {
       </main>
     </div>
   )
+}
+
+export default function App() {
+  const [session, setSession] = useState<AuthSession | null>(getAuthSession)
+
+  useEffect(() => {
+    const syncAuth = () => setSession(getAuthSession())
+    window.addEventListener('storage', syncAuth)
+    window.addEventListener('tango-anki-auth-change', syncAuth)
+    return () => {
+      window.removeEventListener('storage', syncAuth)
+      window.removeEventListener('tango-anki-auth-change', syncAuth)
+    }
+  }, [])
+
+  const handleLogout = async () => {
+    await logoutApi()
+    setSession(null)
+  }
+
+  return session
+    ? <StudyApp session={session} onLogout={handleLogout} />
+    : <LoginPage onLogin={setSession} />
 }
