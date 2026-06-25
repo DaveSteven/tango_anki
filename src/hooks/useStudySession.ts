@@ -166,25 +166,26 @@ export function useStudySession(cards: VocabularyCard[]) {
   const rate = useCallback((rating: Rating) => {
     if (!current) return
     const isNew = !store[current.id]
-    setStore((previous) => {
-      const updated = { ...previous, [current.id]: schedule(previous[current.id] ?? newRecord(), rating) }
-      localStorage.setItem(STORE_KEY, JSON.stringify(updated))
-      void saveReview(current.id, updated[current.id]).catch(() => undefined)
-      return updated
-    })
-    setDaily((previous) => {
-      const base = previous.date === todayKey() ? previous : loadDaily()
-      if (base.completedIds.includes(current.id)) return base
-      const updated = {
-        ...base,
-        newCompleted: base.newCompleted + (isNew ? 1 : 0),
-        reviewCompleted: base.reviewCompleted + (isNew ? 0 : 1),
-        completedIds: [...base.completedIds, current.id],
-      }
-      localStorage.setItem(DAILY_KEY, JSON.stringify(updated))
-      void saveDaily(updated).catch(() => undefined)
-      return updated
-    })
+    const nextReview = schedule(store[current.id] ?? newRecord(), rating)
+    const nextStore = { ...store, [current.id]: nextReview }
+    const todayDaily = daily.date === todayKey() ? daily : loadDaily()
+    const nextDaily = todayDaily.completedIds.includes(current.id)
+      ? todayDaily
+      : {
+          ...todayDaily,
+          newCompleted: todayDaily.newCompleted + (isNew ? 1 : 0),
+          reviewCompleted: todayDaily.reviewCompleted + (isNew ? 0 : 1),
+          completedIds: [...todayDaily.completedIds, current.id],
+        }
+
+    setStore(nextStore)
+    localStorage.setItem(STORE_KEY, JSON.stringify(nextStore))
+    void saveReview(current.id, nextReview).catch(() => undefined)
+
+    setDaily(nextDaily)
+    localStorage.setItem(DAILY_KEY, JSON.stringify(nextDaily))
+    if (nextDaily !== todayDaily) void saveDaily(nextDaily).catch(() => undefined)
+
     if (rating === 'again' || rating === 'hard') {
       const distance = rating === 'again' ? 3 : 10
       setSessionIds((previous) => {
@@ -194,7 +195,7 @@ export function useStudySession(cards: VocabularyCard[]) {
       })
     }
     setIndex((value) => value + 1)
-  }, [current, index, store])
+  }, [current, daily, index, store])
 
   const updateLimits = useCallback((limits: DailySettings) => {
     const normalized = {
