@@ -64,15 +64,8 @@ export async function logout() {
   clearAuthSession()
 }
 
-export async function migrateLocalState(
-  reviews: ReviewStore,
-  daily: DailyProgress,
-  settings: DailySettings,
-): Promise<RemoteStudyState> {
-  const response = await request('/api/v1/study-state/me/migrate', {
-    method: 'POST',
-    body: JSON.stringify({ reviews, daily, settings }),
-  })
+export async function getStudyState(): Promise<RemoteStudyState> {
+  const response = await request('/api/v1/study-state/me')
   return response.json() as Promise<RemoteStudyState>
 }
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DailyProgress, DailySettings, Rating, ReviewStore, VocabularyCard } from '../types'
 import { newRecord, schedule } from '../lib/scheduler'
-import { migrateLocalState, saveDaily, saveReview, saveSettings } from '../lib/api'
+import { getStudyState, saveDaily, saveReview, saveSettings } from '../lib/api'
 
 const STORE_KEY = 'tango-anki-review-v1'
 const DAILY_KEY = 'tango-anki-daily-v1'
@@ -108,13 +108,13 @@ export function useStudySession(cards: VocabularyCard[]) {
   })
   const [index, setIndex] = useState(0)
   const fingerprintRef = useRef(storageFingerprint())
-  const migrationPromiseRef = useRef<ReturnType<typeof migrateLocalState> | null>(null)
+  const statePromiseRef = useRef<ReturnType<typeof getStudyState> | null>(null)
 
   useEffect(() => {
-    migrationPromiseRef.current ??= migrateLocalState(store, daily, settings)
+    statePromiseRef.current ??= getStudyState()
     let cancelled = false
 
-    void migrationPromiseRef.current.then((remote) => {
+    void statePromiseRef.current.then((remote) => {
       if (cancelled) return
       const remoteDaily = remote.daily ?? daily
       localStorage.setItem(STORE_KEY, JSON.stringify(remote.reviews))
@@ -126,7 +126,7 @@ export function useStudySession(cards: VocabularyCard[]) {
       setSessionIds(createSession(remote.reviews, remoteDaily, remote.settings))
       setIndex(0)
     }).catch(() => {
-      // The local queue remains fully usable while the API is offline.
+      // The local cache remains usable while the API is offline.
     })
 
     return () => { cancelled = true }
